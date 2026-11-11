@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches:
+    - main
+  pull_request:
+
+jobs:
+  lint:
+    name: Lint and format check
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout repo
+      uses: actions/checkout@v7
+
+    - name: Install ruff
+      run: pip install ruff
+
+    - name: Run ruff linter
+      run: ruff check .
+
+    - name: Run ruff format check
+      run: ruff format --check .
+
+  render:
+    name: Render the sample graph
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout repo
+      uses: actions/checkout@v7
+
+    - name: Generate the graph
+      uses: ./render-graph
+      with:
+        json: tests/gnu-result.json
+        title: GNU
+        project: awk
+        output: tests/gnu-results.svg
+
+    - name: Upload the graph
+      uses: actions/upload-artifact@v7
+      with:
+        name: gnu-results
+        path: tests/gnu-results.svg

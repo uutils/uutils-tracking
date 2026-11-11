@@ -1,0 +1,134 @@
+name: GNU tracking
+
+# Reusable workflow shared by the uutils/*-tracking repos: fetch the testsuite
+# summary published by the project's GnuTests workflow, append it to
+# gnu-result.json, keep the latest full report as aggregated-result.json and
+# refresh gnu-results.svg. The caller needs `permissions: contents: write`.
+
+on:
+  workflow_call:
+    inputs:
+      repo:
+        description: Project repository, e.g. uutils/sed
+        required: true
+        type: string
+      project:
+        description: Name used in the graph title (default the repository name)
+        required: false
+        type: string
+        default: ''
+      workflow:
+        description: Workflow of the project that uploads the artifacts
+        required: false
+        type: string
+        default: GnuTests.yml
+      branch:
+        description: Only use artifacts of runs on this branch (default any branch)
+        required: false
+        type: string
+        default: ''
+      summary-artifact:
+        description: Artifact holding the date-keyed summary
+        required: false
+        type: string
+        default: test-summary
+      summary-file:
+        description: Summary file in that artifact, e.g. sed-gnu-result.json
+        required: true
+        type: string
+      full-result-artifact:
+        description: Artifact holding the full per-test report
+        required: true
+        type: string
+      full-result-file:
+        description: Report file in that artifact, e.g. sed-gnu-full-result.json
+        required: true
+        type: string
+      title:
+        description: Name of the testsuite, used in the graph and its file name
+        required: false
+        type: string
+        default: GNU
+
+jobs:
+  gnu:
+    name: Process the GNU test results
+    runs-on: ubuntu-latest
+    ## Runs that commit and push must not overlap.
+    concurrency:
+      group: refresh-data
+      cancel-in-progress: false
+    steps:
+    - name: Initialize workflow variables
+      id: vars
+      shell: bash
+      env:
+        REPO: ${{ inputs.repo }}
+        PROJECT: ${{ inputs.project }}
+      run: |
+        echo "project=${PROJECT:-${REPO#*/}}" >> "$GITHUB_OUTPUT"
+
+    - name: Checkout repo
+      uses: actions/checkout@v7
+
+    - name: Download the GNU result
+      uses: dawidd6/action-download-artifact@v28
+      with:
+        workflow: ${{ inputs.workflow }}
+        name: ${{ inputs.summary-artifact }}
+        repo: ${{ inputs.repo }}
+        branch: ${{ inputs.branch }}
+        path: dl
+
+    - name: Download the full test report
+      uses: dawidd6/action-download-artifact@v28
+      with:
+        workflow: ${{ inputs.workflow }}
+        name: ${{ inputs.full-result-artifact }}
+        repo: ${{ inputs.repo }}
+        branch: ${{ inputs.branch }}
+        path: dl
+
+    - name: Merge the json files
+      shell: bash
+      env:
+        SUMMARY_FILE: dl/${{ inputs.summary-file }}
+        FULL_RESULT_FILE: dl/${{ inputs.full-result-file }}
+      run: |
+       echo "== ${SUMMARY_FILE} =="
+       cat "${SUMMARY_FILE}"
+       echo "== gnu-result.json =="
+       cat gnu-result.json|tail -100
+       jq -s '.[0] * .[1]' gnu-result.json "${SUMMARY_FILE}" > merged.json
+       echo "== merged.json ="
+       cat merged.json|tail -100
+       mv merged.json gnu-result.json
+
+       echo "== ${FULL_RESULT_FILE} =="
+       cat "${FULL_RESULT_FILE}"|tail -100
+       mv "${FULL_RESULT_FILE}" aggregated-result.json
+
+       rm -rf dl
+
+    - name: Add & Commit
+      uses: EndBug/add-and-commit@v11.1.1
+      with:
+        default_author: github_actions
+        message: "Update of the data"
+        pull: '--rebase --autostash'
+
+    - name: Generate the graph
+      uses: uutils/uutils-tracking/render-graph@main
+      with:
+        json: gnu-result.json
+        title: ${{ inputs.title }}
+        project: ${{ steps.vars.outputs.project }}
+        output: gnu-results.svg
+
+    - name: Add & Commit the GNU graph
+      uses: EndBug/add-and-commit@v11.1.1
+      with:
+        default_author: github_actions
+        message: "Refresh the GNU graph"
+        add: gnu-results.svg
+        pull: '--rebase --autostash'

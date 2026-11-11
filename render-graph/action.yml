@@ -1,0 +1,36 @@
+name: Render a tracking graph
+description: Plot a date-keyed testsuite result file as an SVG, with the graph.py of the same uutils-tracking ref
+
+inputs:
+  json:
+    description: Date-keyed result file, e.g. gnu-result.json
+    required: true
+  title:
+    description: Name of the testsuite, e.g. GNU
+    required: true
+  project:
+    description: uutils project, e.g. sed
+    required: true
+  output:
+    description: SVG file to write (default <title in lowercase>-results.svg)
+    required: false
+    default: ''
+
+runs:
+  using: composite
+  steps:
+  - name: Install deps
+    shell: bash
+    run: |
+      sudo apt-get update
+      sudo apt-get install -y python3-pandas python3-matplotlib python3-seaborn fonts-dejavu-core
+
+  - name: Generate the graph
+    shell: bash
+    env:
+      JSON: ${{ inputs.json }}
+      TITLE: ${{ inputs.title }}
+      PROJECT: ${{ inputs.project }}
+      OUTPUT: ${{ inputs.output }}
+    run: |
+      python3 "${GITHUB_ACTION_PATH}/../graph.py" "${JSON}" "${TITLE}" --project "${PROJECT}" ${OUTPUT:+--output "${OUTPUT}"}
